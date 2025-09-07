@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .description { text-align: center; margin-bottom: 20px; }
+        .counter { text-align: center; font-size: 2em; font-weight: bold; margin-bottom: 20px; }
+        .board { display: grid; grid-template-columns: repeat(var(--columns), 30px); width: fit-content; margin: 20px auto; }
+        .cell { width: 30px; height: 30px; border: 1px solid #999; cursor: pointer; }
+
+        .c0 { background: white; }
+        .c1 { background: #E53E3E; }
+        .c2 { background: #3182CE; }
+        .c3 { background: #38A169; }
+        .c4 { background: #D69E2E; }
+        .c5 { background: #805AD5; }
+        .c6 { background: #DD6B20; }
+        .c7 { background: #319795; }
+        .c8 { background: #FC8181; }
+        .c15 { background: black; }
+    </style>
+</head>
+<body>
+    <div style="text-align: center;">
+        <button onclick="reset(1)">Level 1</button>
+        <button onclick="reset(2)">Level 2</button>
+        <button onclick="reset(3)">Level 3</button>
+        <button onclick="reset(4)">Level 4</button>
+        <button onclick="reset(5)">Level 5</button>
+    </div>
+    <p class="description">Left/right click</p>
+    <div class="counter" id="counter">20</div>
+    <div id="board" class="board"></div>
+
+    <script>
+        let grid, clicks;
+
+        function gridWidth() {
+            return grid?.[0]?.length;
+        }
+
+        function gridLength() {
+            return grid?.length;
+        }
+
+        function render() {
+            document.getElementById('counter').textContent = clicks;
+            const board = document.getElementById('board');
+            board.style.setProperty('--columns', gridWidth());
+            board.innerHTML = '';
+            for (let y = 0; y < gridLength(); y++) {
+                for (let x = 0; x < gridWidth(); x++) {
+                    const cell = document.createElement('div');
+                    cell.className = `cell c${grid[y][x]}`;
+                    cell.onclick = () => expand(x, y);
+                    cell.oncontextmenu = (e) => { e.preventDefault(); shrink(x, y); };
+                    board.appendChild(cell);
+                }
+            }
+        }
+
+        function getCluster(startX, startY) {
+            const color = grid[startY][startX];
+            if (color === 0 || color === 15) return [];
+
+            const cluster = [];
+            const visited = new Set();
+            const queue = [[startX, startY]];
+
+            while (queue.length > 0) {
+                const [x, y] = queue.shift();
+                const key = `${x},${y}`;
+                if (visited.has(key)) continue;
+                if (x < 0 || x >= gridWidth() || y < 0 || y >= gridLength()) continue;
+                if (grid[y][x] !== color) continue;
+
+                visited.add(key);
+                cluster.push([x, y]);
+
+                queue.push([x+1, y], [x-1, y], [x, y+1], [x, y-1]);
+            }
+            return cluster;
+        }
+
+        function expand(x, y) {
+            if (clicks <= 0) return;
+
+            const cluster = getCluster(x, y);
+            if (cluster.length === 0) return;
+
+            const color = grid[y][x];
+            const toExpand = new Set();
+
+            for (const [cx, cy] of cluster) {
+                [[cx+1,cy], [cx-1,cy], [cx,cy+1], [cx,cy-1]].forEach(([nx, ny]) => {
+                    if (nx >= 0 && nx < gridWidth() && ny >= 0 && ny < gridLength() && grid[ny][nx] === 0) {
+                        toExpand.add(`${nx},${ny}`);
+                    }
+                });
+            }
+
+            if (toExpand.size === 0) return;
+
+            for (const pos of toExpand) {
+                const [nx, ny] = pos.split(',').map(Number);
+                grid[ny][nx] = color;
+            }
+
+            clicks--;
+            render();
+        }
+
+        function shrink(x, y) {
+            if (clicks <= 0) return;
+
+            const cluster = getCluster(x, y);
+            if (cluster.length === 0) return;
+
+            const toShrink = new Set();
+
+            for (const [cx, cy] of cluster) {
+                const hasEmpty = [[cx+1,cy], [cx-1,cy], [cx,cy+1], [cx,cy-1]].some(([nx, ny]) => {
+                    return nx >= 0 && nx < gridWidth() && ny >= 0 && ny < gridLength() && grid[ny][nx] === 0;
+                });
+                if (hasEmpty) {
+                    toShrink.add(`${cx},${cy}`);
+                }
+            }
+
+            if (toShrink.size === 0) return;
+
+            for (const pos of toShrink) {
+                const [nx, ny] = pos.split(',').map(Number);
+                grid[ny][nx] = 0;
+            }
+
+            clicks--;
+            render();
+        }
+
+        function reset(level) {
+            if (level == 1) {
+                clicks = 30;
+                grid = [
+                    [0,0,1,1,0,0,0,2,2,0,0,0],
+                    [0,15,1,1,0,0,0,2,2,0,15,0],
+                    [0,0,0,0,0,0,0,0,0,0,0,0],
+                    [0,0,0,3,0,0,0,0,4,0,0,0],
+                    [0,0,0,3,3,0,0,4,4,0,0,0],
+                    [0,0,0,0,3,0,0,4,0,0,0,0],
+                    [0,0,0,0,0,0,0,0,0,0,0,0],
+                    [0,0,0,5,5,0,15,0,6,6,0,0],
+                    [0,0,0,5,0,0,0,0,0,6,0,0],
+                    [0,0,0,0,0,0,0,0,0,0,0,0],
+                ];
+            } else if (level == 2) {
+                clicks = 20;
+                grid = [
+                    [0,0,1,1,0,0,0,2,2,0,0,0],
+                    [0,15,1,1,0,0,0,2,2,0,15,0],
+                    [0,0,0,0,0,0,0,0,0,0,0,0],
+                    [0,0,0,3,0,0,0,0,4,0,0,0],
+                    [0,0,0,3,3,0,0,4,4,0,0,0],
+                    [0,0,0,0,3,0,0,4,0,0,0,0],
+                    [0,0,0,0,0,0,0,0,0,0,0,0],
+                    [0,0,0,0,0,0,15,0,6,6,0,0],
+                    [0,0,0,0,0,0,0,0,0,6,0,0],
+                    [0,0,0,0,0,0,0,0,0,0,0,0],
+                    [0,7,7,0,0,0,0,0,0,8,8,0],
+                    [0,7,0,0,0,0,0,0,0,0,8,0]
+                ];
+            } else if (level == 3) {
+                clicks = 20;
+                grid = [
+                    [0,0,1,1,0,0,0,2,2,0,0,0],
+                    [0,15,1,1,0,0,0,2,2,0,15,0],
+                    [0,0,0,0,0,0,0,0,0,0,0,0],
+                    [0,0,0,3,0,0,0,0,4,0,0,0],
+                    [0,0,0,3,3,0,0,4,4,0,0,0],
+                    [0,0,0,0,3,0,0,4,0,0,0,0],
+                    [0,0,0,0,0,0,0,0,0,0,0,0],
+                    [0,0,0,0,0,0,15,0,6,6,0,0],
+                    [0,0,0,0,0,0,0,0,0,6,0,0],
+                    [0,0,0,0,0,0,0,0,0,0,0,0],
+                    [0,7,7,0,0,0,0,0,0,8,8,0],
+                    [0,7,0,0,0,0,0,0,0,0,8,0]
+                ];
+            } else if (level == 4) {
+                clicks = 20;
+                grid = [
+                    [0,0,1,1,0,0,0,2,2,0,0,0],
+                    [0,15,1,1,0,0,0,2,2,0,15,0],
+                    [0,0,0,0,0,0,0,0,0,0,0,0],
+                    [0,0,0,3,0,0,0,0,4,0,0,0],
+                    [0,0,0,3,3,0,0,4,4,0,0,0],
+                    [0,0,0,0,3,0,0,4,0,0,0,0],
+                    [0,0,0,0,0,0,0,0,0,0,0,0],
+                    [0,0,0,0,0,0,15,0,6,6,0,0],
+                    [0,0,0,0,0,0,0,0,0,6,0,0],
+                    [0,0,0,0,0,0,0,0,0,0,0,0],
+                    [0,7,7,0,0,0,0,0,0,8,8,0],
+                    [0,7,0,0,0,0,0,0,0,0,8,0]
+                ];
+            } else if (level == 5) {
+                clicks = 20;
+                grid = [
+                    [0,1,1,0,0,0,2,2,0,0],
+                    [15,1,1,0,0,0,2,2,0,15],
+                    [0,0,0,0,0,0,0,0,0,0],
+                    [0,0,3,0,0,0,0,4,0,0],
+                    [0,0,3,3,0,0,4,4,0,0],
+                    [0,0,0,3,0,0,4,0,0,0],
+                    [0,0,0,0,0,0,0,0,0,0],
+                    [0,0,0,0,0,15,0,6,6,0],
+                    [0,0,0,0,0,0,0,0,6,0],
+                    [0,0,0,0,0,0,0,0,0,0],
+                    [7,7,0,0,0,0,0,0,8,8],
+                    [7,0,0,0,0,0,0,0,0,0]
+                ];
+            }
+            render();
+        }
+
+        reset(1);
+        render();
+    </script>
+</body>
+</html>
