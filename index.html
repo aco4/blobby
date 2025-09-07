@@ -8,16 +8,22 @@
         .board { display: grid; grid-template-columns: repeat(var(--columns), 30px); width: fit-content; margin: 20px auto; }
         .cell { width: 30px; height: 30px; border: 1px solid #999; cursor: pointer; }
 
-        .c0 { background: white; }
-        .c1 { background: #E53E3E; }
-        .c2 { background: #3182CE; }
-        .c3 { background: #38A169; }
-        .c4 { background: #D69E2E; }
-        .c5 { background: #805AD5; }
-        .c6 { background: #DD6B20; }
-        .c7 { background: #319795; }
-        .c8 { background: #FC8181; }
-        .c15 { background: black; }
+        .c0  { background: #FFFFFF; } /* white */
+        .c1  { background: #E53E3E; } /* red */
+        .c2  { background: #3182CE; } /* blue */
+        .c3  { background: #38A169; } /* green */
+        .c4  { background: #D69E2E; } /* yellow/gold */
+        .c5  { background: #805AD5; } /* purple */
+        .c6  { background: #DD6B20; } /* orange */
+        .c7  { background: #319795; } /* teal */
+        .c8  { background: #7F1D1D; } /* dark red goal */
+        .c9  { background: #1E3A8A; } /* dark blue goal */
+        .c10 { background: #14532D; } /* dark green goal */
+        .c11 { background: #713F12; } /* dark gold goal */
+        .c12 { background: #4C1D95; } /* dark purple goal */
+        .c13 { background: #7C2D12; } /* dark orange goal */
+        .c14 { background: #134E4A; } /* dark teal goal */
+        .c15 { background: #000000; } /* black */
     </style>
 </head>
 <body>
@@ -28,12 +34,12 @@
         <button onclick="reset(4)">Level 4</button>
         <button onclick="reset(5)">Level 5</button>
     </div>
-    <p class="description">Left/right click</p>
+    <p class="description" id="description">Left Click</p>
     <div class="counter" id="counter">20</div>
     <div id="board" class="board"></div>
 
     <script>
-        let grid, clicks;
+        let grid, clicks, globalLevel, isGameOver;
 
         function gridWidth() {
             return grid?.[0]?.length;
@@ -43,7 +49,45 @@
             return grid?.length;
         }
 
+        function outOfBounds(x, y) {
+            return x < 0 || x >= gridWidth() || y < 0 || y >= gridLength();
+        }
+
+        // Returns true if the cell is next to an empty cell
+        function onEdge(x, y) {
+            if (outOfBounds(x, y)) return false;
+            return grid?.[y+1]?.[x] === 0 ||
+                   grid?.[y-1]?.[x] === 0 ||
+                   grid?.[y]?.[x+1] === 0 ||
+                   grid?.[y]?.[x-1] === 0;
+        }
+
+        function isEmpty(x, y) {
+            return grid[y][x] == 0;
+        }
+
+        function isBlob(x, y) {
+            return grid[y][x] >= 1 && grid[y][x] <= 7;
+        }
+
+        function isWall(x, y) {
+            return grid[y][x] == 15;
+        }
+
+        function isGoal(x, y) {
+            return grid[y][x] >= 8 && grid[y][x] <= 14;
+        }
+
+        function canExpand() {
+            return true;
+        }
+
+        function canShrink() {
+            return globalLevel >= 4;
+        }
+
         function render() {
+            document.getElementById('description').textContent = `Left${canShrink() ? "/right" : ""} click`;
             document.getElementById('counter').textContent = clicks;
             const board = document.getElementById('board');
             board.style.setProperty('--columns', gridWidth());
@@ -52,18 +96,19 @@
                 for (let x = 0; x < gridWidth(); x++) {
                     const cell = document.createElement('div');
                     cell.className = `cell c${grid[y][x]}`;
-                    cell.onclick = () => expand(x, y);
-                    cell.oncontextmenu = (e) => { e.preventDefault(); shrink(x, y); };
+                    cell.onclick = () => click(x, y, "LEFT");
+                    cell.oncontextmenu = (e) => { e.preventDefault(); click(x, y, "RIGHT"); };
                     board.appendChild(cell);
                 }
             }
         }
 
-        function getCluster(startX, startY) {
+        // Returns an array of [x, y]
+        // onVisit - a function that is called whenever a cell is visited
+        // canContinue - a function that returns true if the flood fill can continue to x, y
+        function floodFill(startX, startY, onVisit, canContinue) {
             const color = grid[startY][startX];
-            if (color === 0 || color === 15) return [];
-
-            const cluster = [];
+            const blob = [];
             const visited = new Set();
             const queue = [[startX, startY]];
 
@@ -71,39 +116,94 @@
                 const [x, y] = queue.shift();
                 const key = `${x},${y}`;
                 if (visited.has(key)) continue;
-                if (x < 0 || x >= gridWidth() || y < 0 || y >= gridLength()) continue;
-                if (grid[y][x] !== color) continue;
+                if (outOfBounds(x, y)) continue;
+                onVisit(x, y);
+                if (canContinue ? !canContinue(x, y) : grid[y][x] !== color) continue;
 
                 visited.add(key);
-                cluster.push([x, y]);
+                blob.push([x, y]);
 
                 queue.push([x+1, y], [x-1, y], [x, y+1], [x, y-1]);
             }
-            return cluster;
+            return blob;
+        }
+
+        function click(x, y, action) {
+            if (isGameOver) return;
+            if (clicks == 0) {
+                alert("Game over");
+                isGameOver = true;
+                return;
+            }
+            if (action == "LEFT" && canExpand()) {
+                expand(x, y);
+            } else if (action == "RIGHT" && canShrink()) {
+                shrink(x, y);
+            }
+            checkWin();
+        }
+
+        function checkWin() {
+            const goalToBlob = { 8: 1, 9: 2, 10: 3, 11: 4, 12: 5, 13: 6, 14: 7 };
+
+            for (let goalColor = 8; goalColor <= 14; goalColor++) {
+                const requiredBlob = goalToBlob[goalColor];
+
+                // Collect all positions of this goal
+                const goals = [];
+                for (let y = 0; y < gridLength(); y++) {
+                    for (let x = 0; x < gridWidth(); x++) {
+                        if (grid[y][x] === goalColor) {
+                            goals.push([x, y]);
+                        }
+                    }
+                }
+
+                if (goals.length === 0) continue; // no goals of this type on board
+
+                // Start flood fill from the first goal
+                const visitedGoals = new Set();
+                floodFill(
+                    goals[0][0],
+                    goals[0][1],
+                    (x, y) => {
+                        if (grid[y][x] === goalColor) {
+                            visitedGoals.add(`${x},${y}`);
+                        }
+                    },
+                    (x, y) => {
+                        return grid[y][x] === goalColor || grid[y][x] === requiredBlob;
+                    }
+                );
+
+                // Check that all goals of this type were reached
+                for (const [gx, gy] of goals) {
+                    if (!visitedGoals.has(`${gx},${gy}`)) {
+                        return false; // this group of goals not connected
+                    }
+                }
+            }
+
+            // If we made it here, all goals are satisfied
+            setTimeout(() => alert("You win!"), 10);
+
+            isGameOver = true;
+            return true;
         }
 
         function expand(x, y) {
-            if (clicks <= 0) return;
-
-            const cluster = getCluster(x, y);
-            if (cluster.length === 0) return;
-
+            if (!isBlob(x, y)) return;
             const color = grid[y][x];
-            const toExpand = new Set();
 
-            for (const [cx, cy] of cluster) {
-                [[cx+1,cy], [cx-1,cy], [cx,cy+1], [cx,cy-1]].forEach(([nx, ny]) => {
-                    if (nx >= 0 && nx < gridWidth() && ny >= 0 && ny < gridLength() && grid[ny][nx] === 0) {
-                        toExpand.add(`${nx},${ny}`);
-                    }
-                });
-            }
-
-            if (toExpand.size === 0) return;
-
-            for (const pos of toExpand) {
-                const [nx, ny] = pos.split(',').map(Number);
-                grid[ny][nx] = color;
+            const pending = new Set();
+            const blob = floodFill(x, y,
+                (x, y) => {
+                    if (grid[y][x] == 0) pending.add([x, y]);
+                }
+            );
+            if (pending.size == 0) return;
+            for (const [ex, ey] of pending) {
+                grid[ey][ex] = color;
             }
 
             clicks--;
@@ -111,27 +211,18 @@
         }
 
         function shrink(x, y) {
-            if (clicks <= 0) return;
+            if (!isBlob(x, y)) return;
+            const color = grid[y][x];
 
-            const cluster = getCluster(x, y);
-            if (cluster.length === 0) return;
-
-            const toShrink = new Set();
-
-            for (const [cx, cy] of cluster) {
-                const hasEmpty = [[cx+1,cy], [cx-1,cy], [cx,cy+1], [cx,cy-1]].some(([nx, ny]) => {
-                    return nx >= 0 && nx < gridWidth() && ny >= 0 && ny < gridLength() && grid[ny][nx] === 0;
-                });
-                if (hasEmpty) {
-                    toShrink.add(`${cx},${cy}`);
+            const pending = new Set();
+            const blob = floodFill(x, y,
+                (x, y) => {
+                    if (grid[y][x] == color && onEdge(x, y)) pending.add([x, y]);
                 }
-            }
-
-            if (toShrink.size === 0) return;
-
-            for (const pos of toShrink) {
-                const [nx, ny] = pos.split(',').map(Number);
-                grid[ny][nx] = 0;
+            );
+            if (pending.size == 0) return;
+            for (const [ex, ey] of pending) {
+                grid[ey][ex] = 0;
             }
 
             clicks--;
@@ -139,53 +230,69 @@
         }
 
         function reset(level) {
+            globalLevel = level;
+            isGameOver = false;
             if (level == 1) {
                 clicks = 30;
                 grid = [
-                    [0,0,1,1,0,0,0,2,2,0,0,0],
-                    [0,15,1,1,0,0,0,2,2,0,15,0],
-                    [0,0,0,0,0,0,0,0,0,0,0,0],
-                    [0,0,0,3,0,0,0,0,4,0,0,0],
-                    [0,0,0,3,3,0,0,4,4,0,0,0],
-                    [0,0,0,0,3,0,0,4,0,0,0,0],
-                    [0,0,0,0,0,0,0,0,0,0,0,0],
-                    [0,0,0,5,5,0,15,0,6,6,0,0],
-                    [0,0,0,5,0,0,0,0,0,6,0,0],
-                    [0,0,0,0,0,0,0,0,0,0,0,0],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [08,01,00,00,00,00,00,00,00,00,00,00,00,00,08],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
                 ];
             } else if (level == 2) {
                 clicks = 20;
                 grid = [
-                    [0,0,1,1,0,0,0,2,2,0,0,0],
-                    [0,15,1,1,0,0,0,2,2,0,15,0],
-                    [0,0,0,0,0,0,0,0,0,0,0,0],
-                    [0,0,0,3,0,0,0,0,4,0,0,0],
-                    [0,0,0,3,3,0,0,4,4,0,0,0],
-                    [0,0,0,0,3,0,0,4,0,0,0,0],
-                    [0,0,0,0,0,0,0,0,0,0,0,0],
-                    [0,0,0,0,0,0,15,0,6,6,0,0],
-                    [0,0,0,0,0,0,0,0,0,6,0,0],
-                    [0,0,0,0,0,0,0,0,0,0,0,0],
-                    [0,7,7,0,0,0,0,0,0,8,8,0],
-                    [0,7,0,0,0,0,0,0,0,0,8,0]
+                    [0,0,9,0,0,0,9],
+                    [0,0,0,0,0,0,0],
+                    [0,0,1,0,2,0,0],
+                    [0,0,0,0,0,0,0],
+                    [0,0,0,0,0,0,0],
+                    [0,0,0,0,0,0,0],
+                    [8,0,0,0,0,0,8],
                 ];
             } else if (level == 3) {
                 clicks = 20;
                 grid = [
-                    [0,0,1,1,0,0,0,2,2,0,0,0],
-                    [0,15,1,1,0,0,0,2,2,0,15,0],
-                    [0,0,0,0,0,0,0,0,0,0,0,0],
-                    [0,0,0,3,0,0,0,0,4,0,0,0],
-                    [0,0,0,3,3,0,0,4,4,0,0,0],
-                    [0,0,0,0,3,0,0,4,0,0,0,0],
-                    [0,0,0,0,0,0,0,0,0,0,0,0],
-                    [0,0,0,0,0,0,15,0,6,6,0,0],
-                    [0,0,0,0,0,0,0,0,0,6,0,0],
-                    [0,0,0,0,0,0,0,0,0,0,0,0],
-                    [0,7,7,0,0,0,0,0,0,8,8,0],
-                    [0,7,0,0,0,0,0,0,0,0,8,0]
+                    [0,0,1,1,1,0,0,0,8],
+                    [0,1,1,0,9,0,0,0,0],
+                    [0,0,0,0,0,0,0,0,0],
+                    [0,0,0,0,2,0,0,0,0],
+                    [0,0,0,0,0,0,0,0,0],
+                    [0,0,0,0,10,0,0,0,0],
+                    [0,0,0,0,0,0,0,3,3],
+                    [0,0,0,0,0,0,0,0,0],
+                    [0,0,0,8,0,9,0,0,10],
                 ];
             } else if (level == 4) {
+                clicks = 70;
+                grid = [
+                    [00,00,00,00,00,00,00,00,00,00,15,00,00,00,09],
+                    [00,00,00,00,00,00,00,00,00,00,15,00,00,03,00],
+                    [00,00,00,00,00,00,00,00,00,00,15,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,15,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,01,01,00,00,02,00,00,00,00,15,00,00,00,00],
+                    [08,01,01,00,09,02,00,00,00,00,15,00,00,00,00],
+                    [00,01,01,00,00,02,00,00,00,00,15,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,00,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,15,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,15,00,00,00,00],
+                    [00,00,00,00,00,00,00,00,00,00,15,00,00,04,00],
+                    [00,00,00,00,00,00,00,00,00,00,15,00,00,00,08],
+                ];
+            } else if (level == 5) {
                 clicks = 20;
                 grid = [
                     [0,0,1,1,0,0,0,2,2,0,0,0],
@@ -201,7 +308,7 @@
                     [0,7,7,0,0,0,0,0,0,8,8,0],
                     [0,7,0,0,0,0,0,0,0,0,8,0]
                 ];
-            } else if (level == 5) {
+            } else if (level == 6) {
                 clicks = 20;
                 grid = [
                     [0,1,1,0,0,0,2,2,0,0],
